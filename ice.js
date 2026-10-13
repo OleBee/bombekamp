@@ -1,5 +1,6 @@
 /* Super BomberBoyz – ICE-servere (STUN/TURN) for PeerJS.
-   Henter kortlevde Cloudflare TURN-pålogginger fra turn-worker ved oppstart.
+   Henter TURN-pålogginger fra Metered (gratis prøveplan, 500 MB/mnd, uten kort) ved oppstart.
+   apiKey i turnUrl er Metereds offentlige frontend-nøkkel (gjelder kun én TURN-credential).
    Feiler hentingen (eller turnUrl er tom), brukes PeerJS-standard + Google STUN. */
 'use strict';
 window.BBICE = (() => {
@@ -10,7 +11,7 @@ window.BBICE = (() => {
   try { const c = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (c && c.exp > Date.now()) { S.ice = c.ice; S.done = true; } } catch (e) { }
   const ready = S.done ? Promise.resolve() : Promise.race([
     fetch(cfg, { cache: 'no-store' }).then(r => r.ok ? r.json() : Promise.reject(r.status)).then(d => {
-      let list = d && d.iceServers; if (!list) throw new Error('no iceServers');
+      let list = Array.isArray(d) ? d : d && d.iceServers; if (!list || !list.length) throw new Error('no iceServers');
       if (!Array.isArray(list)) list = [list];
       S.ice = [STUN, ...list];
       try { sessionStorage.setItem(KEY, JSON.stringify({ ice: S.ice, exp: Date.now() + 6 * 3600e3 })); } catch (e) { }

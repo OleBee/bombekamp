@@ -6,7 +6,7 @@
      provider: 'worker', url: 'https://bomberboyz-top.<konto>.workers.dev', key: 'x'
    Se backend/README.md. */
 window.BBX_CONFIG = {
-  // Cloudflare TURN via turn-worker (se turn-worker/README.md). Tom = PeerJS-standard.
-  turnUrl: '',
+  // TURN via Metered (offentlig frontend-nøkkel, gratis 500 MB/mnd). Tom = PeerJS-standard + Google STUN.
+  turnUrl: 'https://bomberboyz.metered.live/api/v1/turn/credentials?apiKey=a9c29f56e84a5015463934dfd3c90a640aea',
   global: { provider: 'supabase', url: 'https://dcmckbbniummjrbhapvx.supabase.co', key: 'sb_publishable_gIXxBRD_xHnjelFSL6GE3w_B703sLBv' },
 };
