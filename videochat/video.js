@@ -9,6 +9,7 @@ const VIDEO_C = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { id
 const OFFER_C = { offerToReceiveAudio: true, offerToReceiveVideo: true };
 const MAX_VIDEO_BPS = 250000;
 const $ = id => document.getElementById(id);
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 const S = {
   active: false, peer: null, myId: '', mySlot: 0, local: null, mediaP: null,
@@ -199,7 +200,7 @@ function tapForSound() {
   S.needTap = false;
   try { if (S.actx && S.actx.state !== 'running') S.actx.resume(); } catch (e) { }
   if (window.BBX && BBX.micState) BBX.micState(S.hasA);   // ta opp igjen spillyden i samme trykk
-  for (const [id, t] of S.tiles) if (id !== 'me') { t.video.muted = false; t.video.play().catch(() => { }); }
+  for (const [id, t] of S.tiles) if (id !== 'me') { t.video.play().catch(() => { }); playAudio(t); }
   renderCtl();
 }
 
@@ -211,14 +212,17 @@ function makeTile(id) {
     '<div class="vt-nm"><i></i><span></span></div><div class="vt-mic" title="Mic is off">🔇</div><div class="vt-lvl"><b></b></div>';
   const video = el.querySelector('video');
   video.setAttribute('playsinline', ''); video.setAttribute('webkit-playsinline', '');
-  if (id === 'me') { video.muted = true; el.classList.add('me'); }
-  const t = { el, video, id, stream: null, slot: -1, lvl: 0 };
+  video.muted = true;   // lyd går via eget <audio>-element (mer robust i Safari/iOS)
+  if (id === 'me') el.classList.add('me');
+  const audio = id === 'me' ? null : document.createElement('audio');
+  if (audio) { audio.autoplay = true; audio.setAttribute('playsinline', ''); el.appendChild(audio); }
+  const t = { el, video, audio, id, stream: null, slot: -1, lvl: 0 };
   S.tiles.set(id, t);
   return t;
 }
 function dropTile(id) {
   const t = S.tiles.get(id); if (!t) return;
-  try { t.video.pause(); t.video.srcObject = null; } catch (e) { }
+  try { t.video.pause(); t.video.srcObject = null; if (t.audio) { t.audio.pause(); t.audio.srcObject = null; } } catch (e) { }
   t.el.remove(); S.tiles.delete(id); dropMeter(id);
 }
 function renderTiles() {
@@ -247,17 +251,28 @@ function setTileStream(id, st) {
   const t = S.tiles.get(id);
   if (!t) { renderTiles(); if (!S.tiles.get(id)) return; return setTileStream(id, st); }
   t.stream = st;
-  if (!st) { t.video.srcObject = null; dropMeter(id); updateTile(id); return; }
+  if (!st) { t.video.srcObject = null; if (t.audio) t.audio.srcObject = null; dropMeter(id); updateTile(id); return; }
   if (t.video.srcObject !== st) t.video.srcObject = st;
-  t.video.muted = S.needTap;
-  const p = t.video.play();
-  if (p && p.catch) p.catch(e => {
-    if (e && e.name === 'NotAllowedError') { S.needTap = true; t.video.muted = true; t.video.play().catch(() => { }); renderCtl(); }
-  });
-  if (st.getAudioTracks().length) addMeter(id, st);
+  t.video.play().catch(() => { });
+  attachAudio(t, st);
+  if (st.getAudioTracks().length && !IOS) addMeter(id, st);   // iOS: WebAudio på fjernspor kan dempe avspillingen
   t.video.onresize = () => updateTile(id);
-  st.onaddtrack = () => { if (st.getAudioTracks().length) addMeter(id, st); updateTile(id); };
+  // PeerJS sender 'stream' ved første spor; lydsporet kan komme etterpå
+  st.onaddtrack = () => { attachAudio(t, st); if (st.getAudioTracks().length && !IOS) addMeter(id, st); updateTile(id); };
   updateTile(id);
+}
+function attachAudio(t, st) {
+  if (!t.audio) return;
+  const at = st.getAudioTracks(); if (!at.length) return;
+  const cur = t.audio.srcObject;
+  if (!cur || cur.getAudioTracks()[0] !== at[0]) t.audio.srcObject = new MediaStream(at);
+  playAudio(t);
+}
+function playAudio(t) {
+  if (!t.audio || !t.audio.srcObject) return;
+  t.audio.muted = false; t.audio.volume = 1;
+  const p = t.audio.play();
+  if (p && p.catch) p.catch(e => { if (e && e.name === 'NotAllowedError') { S.needTap = true; renderCtl(); } });
 }
 function updateTile(id) {
   const t = S.tiles.get(id); if (!t) return;
@@ -329,7 +344,7 @@ function init(opts) {
   S.icon = opts && opts.icon;
   $('avMic').onclick = toggleMic; $('avCam').onclick = toggleCam; $('avHide').onclick = toggleHide; $('avTap').onclick = tapForSound;
   // iOS: første trykk hvor som helst låser opp lyden
-  window.addEventListener('pointerdown', () => { if (S.needTap) tapForSound(); else if (S.actx && S.actx.state === 'suspended') S.actx.resume(); }, { passive: true });
+  ['pointerdown', 'keydown'].forEach(ev => window.addEventListener(ev, () => { if (S.needTap) tapForSound(); else if (S.actx && S.actx.state === 'suspended') S.actx.resume(); }, { passive: true }));
   renderCtl();
 }
 
@@ -341,7 +356,7 @@ return {
     for (const [id, t] of S.tiles) {
       const st = t.stream;
       out[id] = { w: t.video.videoWidth, h: t.video.videoHeight, a: st ? st.getAudioTracks().length : 0, v: st ? st.getVideoTracks().length : 0,
-        live: st ? st.getTracks().filter(x => x.readyState === 'live').length : 0, lvl: +(t.lvl || 0).toFixed(2), paused: t.video.paused, muted: t.video.muted };
+        live: st ? st.getTracks().filter(x => x.readyState === 'live').length : 0, lvl: +(t.lvl || 0).toFixed(2), paused: t.video.paused, muted: t.audio ? t.audio.muted : true, aPaused: t.audio ? t.audio.paused : null };
     }
     return { active: S.active, myId: S.myId, hasA: S.hasA, hasV: S.hasV, mic: S.micOn, cam: S.camOn, remotes: [...S.remotes.keys()], errName: S.errName, connected: [...S.remotes.values()].filter(r => r.connected).length, tiles: out, status: S.status };
   },
