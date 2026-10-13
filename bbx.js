@@ -31,6 +31,15 @@ window.BBX = (() => {
     return ctx.createPeriodicWave(re, im);
   }
   const target = () => snd.muted ? 0 : snd.vol * 0.6;
+  // Egne brytere for musikk og lydeffekter (lagres i localStorage)
+  const mix = Object.assign({ music: true, sfx: true }, store.get('bk-mix', {}));
+  function applyMix() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    try { musicBus.gain.cancelScheduledValues(0); musicBus.gain.setValueAtTime(mix.music ? 0.32 : 0, t); } catch (e) { musicBus.gain.value = mix.music ? 0.32 : 0; }
+    try { sfxBus.gain.cancelScheduledValues(0); sfxBus.gain.setValueAtTime(mix.sfx ? sfxGain0 : 0, t); } catch (e) { sfxBus.gain.value = mix.sfx ? sfxGain0 : 0; }
+  }
+  const sfxGain0 = 0.8;
   let volT = 0;
   function applyVol() {
     // Ikke bruk setTargetAtTime mens konteksten står stille: i noen nettlesere (særlig Safari) ble hovedvolumet
@@ -63,6 +72,7 @@ window.BBX = (() => {
       musicBus = ctx.createGain(); musicBus.gain.value = 0.32; musicBus.connect(master);
       sfxBus = ctx.createGain(); sfxBus.gain.value = 0.8; sfxBus.connect(master);
       pulse = makePulse(0.25);
+      applyMix();
       noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
       const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       applyVol();
@@ -387,6 +397,13 @@ window.BBX = (() => {
   // Stil (SNES-aktige menypaneler) + lydknapp
   // =====================================================================
   const css = `
+  #bbxMix { position:fixed; top:calc(8px + env(safe-area-inset-top, 0px)); right:calc(8px + env(safe-area-inset-right, 0px));
+    z-index:9999; display:flex; gap:6px; }
+  #bbxMix button { width:44px; height:44px; padding:0; margin:0; font-size:20px; line-height:1; cursor:pointer; position:relative;
+    background:#7ec8ff; border:3px solid #000; box-shadow:3px 3px 0 #000; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+  #bbxMix button.off { background:#b8bec8; opacity:.85; }
+  #bbxMix button.off::after { content:''; position:absolute; left:6px; right:6px; top:50%; height:4px; margin-top:-2px; background:#e0301e; transform:rotate(-45deg); }
+  @media (max-height:500px), (max-width:600px) { #bbxMix button { width:38px; height:38px; font-size:17px; } }
   #bbxSnd { position:fixed; top:10px; right:10px; z-index:50; width:46px; height:46px; padding:0; font-size:22px; line-height:1;
     background:#7ec8ff; }
   .bbx-board { background: linear-gradient(180deg, #2a3f9a 0%, #1b2766 100%); border:4px solid #f1f1e8;
@@ -431,13 +448,24 @@ window.BBX = (() => {
   `;
   function mountUi() {
     const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
-    applyVol();   // ingen lydknapp (M = av/på på PC)
+    applyVol();   // M = alt av/på på PC
+    const box = document.createElement('div'); box.id = 'bbxMix';
+    const mk = (key, icon, label) => {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = icon;
+      const upd = () => { const on = mix[key]; b.classList.toggle('off', !on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.title = b.ariaLabel = label + (on ? ': på (trykk for av)' : ': av (trykk for på)'); b.setAttribute('aria-label', b.title); };
+      b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); mix[key] = !mix[key]; store.set('bk-mix', mix); applyMix(); upd(); b.blur(); });
+      b.addEventListener('keydown', e => { if (e.code === 'Space' || e.code === 'Enter') e.stopPropagation(); });
+      upd(); return b;
+    };
+    box.appendChild(mk('music', '🎵', 'Musikk')); box.appendChild(mk('sfx', '🔊', 'Lydeffekter'));
+    document.body.appendChild(box);
     setupMenu();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountUi); else mountUi();
 
   return {
-    init, music, jingle, sfx, toggleMute, cycleVol, get sound() { return Object.assign({}, snd); },
+    init, music, jingle, sfx, toggleMute, get mix() { return Object.assign({}, mix); }, cycleVol, get sound() { return Object.assign({}, snd); },
     micState, get ctxState() { return ctx ? ctx.state : 'none'; },
     dock(id) { const el = $('lbPanel'), slot = $('lbSlot'); if (!el) return; const lob = $('lbSlotLobby'); const to = id === 'menu' && slot ? slot : id === 'lobby' && lob ? lob : document.body; if (el.parentNode !== to) to.appendChild(el); },
     recordLocal, localTop, submitGlobal, globalTop, serverMsg, get globalOn() { return globalOn; }, table, renderMenu,
