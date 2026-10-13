@@ -971,6 +971,7 @@ function broadcast(msg) { for (const c of net.conns.values()) { if (c.open) { tr
 function hostLobbyUpdate() { broadcast(lobbyMsg()); renderLobby(); }
 
 function startHosting(offline) {
+  if (!offline && !BBICE.done) { BBICE.ready.then(() => startHosting(offline)); return; }
   resetNet();
   net.role = 'host'; mySlot = 0;
   room.members = [{ slot: 0, name: myName(), bot: false, me: true }];
@@ -984,7 +985,7 @@ function startHosting(offline) {
   BBAV.start();
   const tryOpen = (attempt) => {
     const code = genCode();
-    const peer = new Peer(PEER_PREFIX + code, { debug: 1 });
+    const peer = new Peer(PEER_PREFIX + code, BBICE.opts({ debug: 1 }));
     net.peer = peer; BBAV.attachPeer(peer);
     peer.on('open', () => {
       room.code = code; menuErr('');
@@ -1101,12 +1102,13 @@ function hostTick(dt) {
 // --- Klient ---
 let joinTimer = null, lastSent = '', lastSentT = 0;
 function joinRoom(code) {
+  if (!BBICE.done) { menuErr('Connecting …'); BBICE.ready.then(() => joinRoom(code)); return; }
   if (!code) { menuErr('Enter a valid room code or link.'); return; }
   resetNet();
   net.role = 'client'; room.code = code;
   menuErr('Connecting to room ' + code + ' …');
   BBAV.start();
-  const peer = new Peer({ debug: 1 });
+  const peer = new Peer(BBICE.opts({ debug: 1 }));
   net.peer = peer; BBAV.attachPeer(peer);
   clearTimeout(joinTimer);
   joinTimer = setTimeout(() => { if (net.role === 'client' && !net.hostConn?.open) leave("Couldn't reach room " + code + '. Check the code or try again.'); }, 20000);

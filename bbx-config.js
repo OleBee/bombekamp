@@ -6,5 +6,7 @@
      provider: 'worker', url: 'https://bomberboyz-top.<konto>.workers.dev', key: 'x'
    Se backend/README.md. */
 window.BBX_CONFIG = {
+  // Cloudflare TURN via turn-worker (se turn-worker/README.md). Tom = PeerJS-standard.
+  turnUrl: '',
   global: { provider: 'supabase', url: 'https://dcmckbbniummjrbhapvx.supabase.co', key: 'sb_publishable_gIXxBRD_xHnjelFSL6GE3w_B703sLBv' },
 };

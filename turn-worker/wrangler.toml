@@ -1,0 +1,8 @@
+name = "bomberboyz-turn"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://bomberboyz.no,https://www.bomberboyz.no,https://olebee.github.io"
+TTL = "43200"
+# Secrets (ikke i repo):  wrangler secret put TURN_KEY_ID  /  wrangler secret put TURN_KEY_API_TOKEN
